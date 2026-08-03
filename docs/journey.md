@@ -686,3 +686,42 @@ MediaMTX path loss.)
   UTC) — the parser now assumes UTC to match. If a future deployment sets a
   different mediamtx TZ, filenames + parser must agree.
 
+## 2026‑08‑03 — Entry 15 · Readiness sign‑off + AI/computer‑vision implementation plan
+
+### Asked
+"یه پلن خیلی خیلی کامل و دقیق بریز برای پیاده‌سازی اون هوش مصنوعی و پردازش تصویری …
+فقط قبلش بررسی کن که هیچ ایراد دیگه‌ای باقی نمونده و آماده‌ایم که بریم سراغ قسمت
+اصلی کار" — first confirm nothing else is broken, then write a very complete,
+precise plan for the AI / image‑processing work.
+
+### Readiness verification (before writing the plan)
+- Live diagnostics (throwaway Django script): all 5 cameras `mediamtx_ready=True`;
+  event clips `{ready:27, assembling:0, pending:2, failed:0}`; events(24h)=61;
+  recordings total=1263 — recording is continuous, no failed clips.
+- Backend test suite (throwaway `python:3.12-slim` container): **71/71 pass**,
+  `makemigrations --check` = "No changes detected" (timezone fix in `_parse_start`
+  and the `-threads 2` ffmpeg change introduced no regressions/migrations).
+- Frontend: `tsc` clean, `vite build` OK (~18.5 s).
+- Conclusion: no outstanding defects — foundation is ready for the AI phase.
+
+### Delivered
+- `docs/ai-plan.md` — the full AI/CV implementation plan. Highlights: it builds on
+  the Phase‑7 contract (Detection dataclass, `ingest_detection` threshold/zone/dedup,
+  `ai` queue isolation, detector‑health + false‑positive reporting) so every AI
+  phase is additive. Covers: target architecture + integration seams (input via
+  `media_client.build_source_url`, output via `ingest_detection`); the make‑or‑break
+  **frame‑acquisition** decision (dedicated RTSP decode‑inference worker, fps
+  control + motion‑gating + batching, with rejected alternatives documented);
+  model serving/GPU (ONNX Runtime/TensorRT/Triton, `nvidia-container-toolkit`, a
+  separate inference service); new data models (`DetectorModel` registry,
+  `DetectorConfig`, persisted `Detection`, tracking, gated face tables); a phased
+  rollout **AI‑0…AI‑7** (infra → objects+tracking → analytics rules → Iranian‑plate
+  ALPR → fire/smoke → forensic search → gated face recognition → MLOps); cross‑cutting
+  performance/accuracy/privacy/failure‑isolation concerns; per‑detector testing &
+  acceptance; risks & mitigations; ~8–14 wk estimate with AI‑0+AI‑1 as the first
+  end‑to‑end milestone.
+- Non‑negotiables carried over: AI never degrades the VMS (separate service/queue),
+  detectors are pure event producers, everything auditable, human‑in‑the‑loop from
+  day one, and Iran‑specific realities (Persian plates need a tuned model; face
+  recognition is legally sensitive and stays feature‑flagged/RBAC'd).
+
