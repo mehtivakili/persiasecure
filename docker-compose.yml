@@ -1,0 +1,128 @@
+services:
+  postgres:
+    image: postgres:16.14-alpine3.23
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-persiansecure}
+      POSTGRES_USER: ${POSTGRES_USER:-persiansecure}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-persiansecure}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-persiansecure}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4.9-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mediamtx:
+    # '-ffmpeg' variant bundles ffmpeg, required for on-demand HEVC→H.264
+    # transcoding of H.265/H.265+ cameras for browser live view.
+    image: bluenviron/mediamtx:1.18.1-ffmpeg
+    environment:
+      MTX_PROTOCOLS: tcp
+      # Advertise the server's reachable address for WebRTC ICE.
+      # Empty (default) = localhost only; set PUBLIC_HOST in .env for LAN/cloud.
+      MTX_WEBRTCADDITIONALHOSTS: ${PUBLIC_HOST:-}
+    volumes:
+      - ./media_server/mediamtx.yml:/mediamtx.yml
+      - recordings:/recordings
+    ports:
+      - "8554:8554"   # RTSP
+      - "8888:8888"   # HLS
+      - "8889:8889"   # WebRTC (WHEP)
+      - "8189:8189/udp" # WebRTC ICE/UDP
+      # The control API (9997) and playback (9996) are intentionally NOT published
+      # to the host — only the backend reaches them over the internal Docker
+      # network (mediamtx:9997). Exposing the control API lets anyone reconfigure
+      # or read every camera path (Phase 6 security hardening, issue #10).
+
+  backend:
+    build: ./backend
+    command: ["/app/entrypoint.sh"]
+    env_file: .env
+    environment:
+      RUN_MODE: web
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+      - recordings:/recordings
+      - static:/app/staticfiles
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  celery-worker:
+    build: ./backend
+    # Core queue only (recording indexing, clips, exports, health, automation).
+    # --concurrency capped so CPU-bound ffmpeg (clip/export) jobs can't peg every
+    # core and stall the whole app.
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "celery", "--concurrency", "3"]
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+      - recordings:/recordings
+    depends_on:
+      - backend
+      - redis
+
+  # Isolated AI/analytics worker — inference here can't starve the core queue.
+  celery-worker-ai:
+    build: ./backend
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "ai", "-n", "ai@%h"]
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+      - recordings:/recordings
+    depends_on:
+      - backend
+      - redis
+
+  celery-beat:
+    build: ./backend
+    # Waits for the backend to finish migrations (django_celery_beat tables)
+    # before the DatabaseScheduler can read them; restart retries until ready.
+    command: ["celery", "-A", "config", "beat", "-l", "info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - backend
+      - redis
+
+  # Synthetic camera: publishes a looping test stream with hard scene cuts to
+  # MediaMTX so live view, recording and motion detection work with no hardware.
+  test-video:
+    profiles: ["demo"]
+    build: ./backend
+    entrypoint: ["/bin/sh", "/app/scripts/publish_test_video.sh"]
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - mediamtx
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
+  recordings:
+  static:

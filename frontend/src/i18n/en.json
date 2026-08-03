@@ -1,0 +1,235 @@
+{
+  "app": { "name": "PersianSecure", "tagline": "Cloud Video Surveillance" },
+  "desk": {
+    "title": "Smart Desk",
+    "dragHint": "Drag an item onto a tile (or click it) to display.",
+    "emptyTile": "Drag & drop here", "clearTile": "Close tile", "clearAll": "Clear all",
+    "maximize": "Maximize", "instantReplay": "Instant replay", "backToLive": "Back to live",
+    "replay": "Replay", "alarms": "Live alarms", "noAlarms": "No active alarms.",
+    "autoDisplay": "Auto-display alarms in a tile", "showInTile": "Show in tile",
+    "savedLayouts": "Saved layouts", "saveLayout": "Save layout",
+    "layoutName": "Layout name", "none": "— none —"
+  },
+  "nav": {
+    "dashboard": "Dashboard", "desk": "Smart Desk", "liveview": "Live View", "playback": "Playback",
+    "exports": "Exports",
+    "cameras": "Cameras", "events": "Events", "analytics": "Analytics",
+    "access": "Access Control", "maps": "Maps", "federation": "Federation",
+    "evidence": "Evidence", "automation": "Automation", "reports": "Reports",
+    "health": "System Health", "users": "Users", "roles": "Roles",
+    "settings": "Settings", "logout": "Logout"
+  },
+  "navGroups": {
+    "video": "Video Surveillance", "intelligence": "Intelligence & Reports",
+    "access": "Access Control", "system": "System Management"
+  },
+  "threat": { "title": "Threat level", "green": "Normal", "yellow": "Elevated", "red": "Critical" },
+  "banner": { "unacked": "{{count}} unacknowledged alarms", "view": "View alarms" },
+  "automation": {
+    "title": "Automation (Event → Action)", "addRule": "Add rule", "ruleName": "Rule name",
+    "trigger": "Trigger", "action": "Action", "anyEvent": "Any event", "anyCamera": "All cameras",
+    "runs": "Runs", "empty": "No rules defined yet.",
+    "actions": { "webhook": "Call webhook", "unlock_door": "Unlock door", "lock_door": "Lock door", "set_threat": "Set threat level", "send_sms": "Send SMS", "voice_call": "Voice call" },
+    "phone": "Phone number", "message": "Message (optional)",
+    "messageHint": "Leave empty to send the default alarm text."
+  },
+  "reports": {
+    "title": "Reports", "from": "From", "to": "To", "download": "Download CSV",
+    "failed": "Report download failed.",
+    "kinds": { "events": "Events", "access": "Access", "plates": "Plates" },
+    "desc": { "events": "All system events and alarms", "access": "Granted/denied door activity", "plates": "Plate reads and watchlist hits" }
+  },
+  "settings": {
+    "title": "Settings",
+    "recipients": "Alarm recipients",
+    "recipientsHint": "These numbers receive an SMS or call on critical events (fire, smoke, line crossing).",
+    "addNumber": "Add number", "noNumbers": "No numbers added yet.",
+    "name": "Name", "phone": "Phone", "sms": "SMS", "call": "Call",
+    "testSms": "Test SMS", "testCall": "Test call",
+    "testOk": "Sent (provider: {{provider}}) ✓", "testFail": "Send failed. Check the provider settings.",
+    "provider": "SMS/call provider",
+    "providerHint": "For real delivery, pick Kavenegar or Twilio and enter the API key.",
+    "providers": { "console": "Test mode (log only)", "kavenegar": "Kavenegar (Iran)", "twilio": "Twilio (international)" },
+    "consoleNote": "In test mode, messages are logged instead of actually sent.",
+    "apiKey": "API key", "smsSender": "Sender line",
+    "alarmRules": "SMS alarm rules",
+    "alarmRulesHint": "These events auto-send an SMS. Edit the rules under Automation.",
+    "saved": "Saved ✓"
+  },
+  "health": {
+    "title": "System Health", "ok": "OK", "down": "Down", "storage": "Storage",
+    "used": "Used", "free": "Free", "recordings": "Recordings",
+    "projectedDays": "Projected days left", "recordingDelay": "Recording delay", "storageByCamera": "Storage by camera",
+    "services": { "database": "Database", "redis": "Queue & cache (Redis)", "mediamtx": "Media server", "celery": "Background workers" }
+  },
+  "auth": {
+    "login": "Login", "username": "Username", "password": "Password",
+    "signIn": "Sign in", "error": "Invalid username or password.",
+    "welcome": "Welcome to PersianSecure",
+    "sub": "Sign in to your account to continue.",
+    "hero": "A unified command center for video surveillance, access control and intelligent analytics.",
+    "feat1": "Live monitoring and VMS foundation", "feat2": "Analytics & ALPR", "feat3": "Access control"
+  },
+  "dashboard": {
+    "title": "Dashboard", "totalCameras": "Total cameras", "online": "Online",
+    "offline": "Offline", "recording": "Recording", "events24h": "Events (24h)",
+    "unacknowledged": "Unacknowledged", "storage": "Storage",
+    "eventsChart": "Events trend (24h)", "cameraStatus": "Camera status",
+    "recentAlarms": "Recent alarms"
+  },
+  "liveview": {
+    "title": "Live View", "layout": "Layout", "selectCamera": "Select camera",
+    "noSignal": "No signal", "snapshot": "Snapshot", "ptz": "PTZ control",
+    "tour": "Camera tour", "wall": "Video wall"
+  },
+  "playback": {
+    "title": "Playback", "camera": "Camera", "date": "Date",
+    "noRecordings": "No recordings for this range.", "export": "Export",
+    "exportRange": "Export selected range", "timeline": "Timeline",
+    "pickSegment": "Click the timeline to play",
+    "addBookmark": "Bookmark", "bookmarkNote": "Enter bookmark note:",
+    "pickCamera": "Select a camera.", "gap": "No recording at this moment.",
+    "prevEvent": "Previous event", "nextEvent": "Next event", "snapshot": "Snapshot",
+    "markIn": "Mark in", "markOut": "Mark out"
+  },
+  "cameras": {
+    "title": "Cameras", "add": "Add camera", "edit": "Edit camera", "name": "Name",
+    "location": "Location", "status": "Status", "recording": "Recording",
+    "rtspUrl": "RTSP URL", "host": "Host", "port": "Port", "path": "Path",
+    "username": "Camera username", "password": "Camera password", "onvif": "ONVIF",
+    "onvifDiscover": "Discover ONVIF", "onvifProbe": "Fetch device info",
+    "test": "Test connection", "reachable": "Reachable", "unreachable": "Unreachable",
+    "enabled": "Enabled", "ptzEnabled": "PTZ support", "save": "Save", "cancel": "Cancel",
+    "delete": "Delete", "confirmDelete": "Delete this camera?",
+    "confirmDeleteNamed": "Delete camera \"{{name}}\"? This cannot be undone.",
+    "startRec": "Start recording", "stopRec": "Stop recording",
+    "recScheduled": "Recording (scheduled)", "manualRec": "Manual",
+    "recordMode": "Record mode", "retention": "Retention (days)",
+    "brand": "Camera brand", "channel": "Channel",
+    "brandHint": "Pick a brand to auto-fill its stream path and default ports.",
+    "rtspUrlHint": "If set, this overrides the brand path/port. Use \"Test connection\" to confirm.",
+    "videoCodec": "Video codec",
+    "codecs": { "h264": "H.264 / AVC", "h265": "H.265 / HEVC (incl. H.265+)" },
+    "h264Hint": "Plays directly in the browser; no transcode, no extra CPU.",
+    "h265Hint": "Recorded natively as H.265 (~50% smaller). Transcoded to H.264 only while someone is watching live.",
+    "steps": { "connection": "Connection", "test": "Test", "stream": "Stream", "recording": "Recording", "review": "Review" },
+    "testIntro": "Verify the camera is reachable and its video codec is supported before saving.",
+    "detectedCodec": "Detected codec: {{codec}}",
+    "unsupportedCodecDetail": "Codec {{codec}} is not supported for browser playback. Use an H.264 or H.265 stream.",
+    "probeHelp": "Check the host, port, path and credentials, then test again.",
+    "passwordEditHint": "Leave blank to keep the stored password.",
+    "saveFailed": "Could not save the camera; check the backend connection.",
+    "saveFailedCode": "Could not save the camera (error {{code}}).",
+    "savedTitle": "Camera saved", "savedBody": "The camera and its recording policy were saved and the media server was configured.",
+    "livePreview": "Live preview", "livePreviewHint": "If the stream does not appear, the camera may still be connecting or unreachable.",
+    "reviewTitle": "Review before saving", "notTested": "Not tested",
+    "recordModeNotYet": "Motion/scheduled recording is not implemented yet — it currently records continuously. Coming in Phase 2.",
+    "motionBufferNote": "Motion mode records a short-segment rolling buffer so pre-event video is available.",
+    "weeklyHint": "Define one or more time ranges per day. Recording happens only inside these windows.",
+    "noWindow": "No window (not recording)",
+    "addWindow": "Add window",
+    "probe": {
+      "ok": "Reachable", "unsupported_codec": "Unsupported codec", "auth": "Authentication failed",
+      "dns": "Host could not be resolved", "network": "Network unreachable / refused",
+      "timeout": "Connection timed out", "ffprobe_missing": "ffprobe not available on the server",
+      "invalid": "Incomplete connection details", "forbidden": "Not permitted", "unknown": "Connection failed"
+    }
+  },
+  "recordModes": {
+    "off": "Off", "continuous": "Continuous", "motion": "Motion", "scheduled": "Scheduled"
+  },
+  "exports": {
+    "title": "Recording exports",
+    "hint": "Exports are created from the Playback page (select a range with Mark in/out). Track their status and download here.",
+    "from": "From", "to": "To", "size": "Size", "download": "Download",
+    "status": { "pending": "Queued", "running": "Running", "done": "Ready", "failed": "Failed" }
+  },
+  "weekdays": {
+    "0": "Saturday", "1": "Sunday", "2": "Monday", "3": "Tuesday",
+    "4": "Wednesday", "5": "Thursday", "6": "Friday"
+  },
+  "events": {
+    "title": "Events & Alarms", "type": "Type", "severity": "Severity", "camera": "Camera",
+    "time": "Time", "status": "Status", "acknowledge": "Ack", "clear": "Clear",
+    "acknowledgeAll": "Ack all", "acknowledged": "Acknowledged",
+    "unacknowledged": "Unacknowledged", "live": "Live",
+    "clip": "Clip", "playClip": "Play clip", "retryClip": "Retry",
+    "clipPending": "Processing", "clipFailed": "Clip assembly failed",
+    "markEvent": "Mark test event",
+    "markEventHint": "Pick a recording camera to raise an event and build its pre/post-event clip.",
+    "assignee": "Assignee", "unassigned": "Unassigned",
+    "comments": "Comments", "addComment": "Add a comment…", "noComments": "No comments yet.",
+    "related": "Related events", "audit": "Audit history", "noAudit": "No history.",
+    "noClip": "No clip.", "protect": "Protect (legal hold)",
+    "openPlayback": "Open in playback", "openLive": "Open live",
+    "allClips": "All", "withClip": "With clip", "withoutClip": "Without clip",
+    "detectedBy": "Detected by {{model}} ({{confidence}}%)",
+    "falsePositive": "False positive", "reportFP": "Report false positive"
+  },
+  "eventTypes": {
+    "motion": "Motion", "alpr": "License plate", "object": "Object",
+    "fire": "Fire", "smoke": "Smoke", "tripwire": "Line crossing",
+    "offline": "Offline", "tamper": "Tamper", "manual": "Manual"
+  },
+  "severity": { "info": "Info", "warning": "Warning", "critical": "Critical" },
+  "users": {
+    "title": "Users", "add": "Add user", "username": "Username", "email": "Email",
+    "displayName": "Display name", "role": "Role", "active": "Active",
+    "password": "Password", "save": "Save"
+  },
+  "roles": {
+    "title": "Roles & Permissions", "add": "Add role", "name": "Role name",
+    "permissions": "Permissions", "users": "Users"
+  },
+  "analytics": {
+    "title": "Video Analytics & ALPR", "rules": "Rules", "plateReads": "Plate reads",
+    "objects": "Objects", "watchlist": "Watchlist", "addRule": "Add rule",
+    "ruleType": "Analytics type", "interval": "Interval (s)", "runNow": "Run now",
+    "plate": "Plate", "confidence": "Confidence", "country": "Country", "label": "Label",
+    "reason": "Reason",
+    "kind": { "alpr": "License plate", "object": "Object", "motion": "Motion", "fire": "Fire", "smoke": "Smoke", "tripwire": "Tripwire" },
+    "heatmap": "Heatmap", "range": "Range", "days": "days", "samples": "Samples",
+    "low": "Low", "high": "High", "noHeat": "No motion data recorded yet.",
+    "drawLine": "Draw the virtual line on the image", "clearLine": "Clear",
+    "lineHint": "Click twice on the image to set the line endpoints.",
+    "lineSet": "Line set ✓ — crossing raises a critical alarm.",
+    "pickCameraFirst": "Select a camera first.",
+    "demoNote": "Runs in demo mode until a real model is installed.",
+    "notRecordingWarning": "⚠ This camera isn't recording — enable a recording mode first, otherwise event clips (5s before/after) can't be built."
+  },
+  "access": {
+    "title": "Access Control", "doors": "Doors", "cardholders": "Cardholders",
+    "events": "Access events", "addDoor": "Add door", "unlock": "Unlock", "lock": "Lock",
+    "controllerUrl": "Controller URL", "relay": "Relay", "unlockSeconds": "Unlock seconds",
+    "firstName": "First name", "lastName": "Last name", "employeeId": "Employee ID",
+    "kind": "Type", "kinds": { "employee": "Employee", "visitor": "Visitor", "contractor": "Contractor" },
+    "credentials": "Credentials", "door": "Door", "cardholder": "Cardholder",
+    "decision": "Decision", "reason": "Reason", "granted": "Granted", "denied": "Denied",
+    "state": { "locked": "Locked", "unlocked": "Unlocked", "held": "Held", "offline": "Offline" }
+  },
+  "maps": {
+    "title": "Maps & Floor Plans", "select": "Select map", "upload": "Upload map",
+    "addMarker": "Add marker", "clickToPlace": "Click on the map", "removeMarker": "Remove marker?",
+    "empty": "No maps uploaded yet.", "camera": "Camera", "door": "Door"
+  },
+  "federation": {
+    "title": "Multi-server Federation", "addServer": "Add server", "baseUrl": "Server URL",
+    "cameras": "Cameras", "lastSync": "Last sync", "empty": "No servers added."
+  },
+  "evidence": {
+    "title": "Evidence Management", "addCase": "New case", "caseNumber": "Case number",
+    "caseTitle": "Title", "description": "Description", "items": "Items", "custody": "Chain of custody",
+    "addNote": "Add note", "verify": "Verify integrity", "integrity": "Items intact",
+    "close": "Close case", "selectCase": "Select a case.", "empty": "No cases.",
+    "status": { "open": "Open", "closed": "Closed", "archived": "Archived" },
+    "kind": { "recording": "Recording", "export": "Export", "snapshot": "Snapshot", "note": "Note" }
+  },
+  "status": { "online": "Online", "offline": "Offline", "unknown": "Unknown", "disabled": "Disabled" },
+  "common": {
+    "yes": "Yes", "no": "No", "loading": "Loading...", "save": "Save", "cancel": "Cancel",
+    "delete": "Delete", "edit": "Edit", "actions": "Actions", "search": "Search",
+    "refresh": "Refresh", "close": "Close", "none": "—", "confirm": "Confirm",
+    "connected": "Connected", "disconnected": "Disconnected",
+    "back": "Back", "next": "Next"
+  }
+}

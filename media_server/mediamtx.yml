@@ -1,0 +1,65 @@
+# MediaMTX configuration for PersianSecure
+# Handles RTSP/ONVIF ingest and re-publishing to WebRTC (WHEP) / HLS,
+# plus recording camera streams to segmented mp4 files on a shared volume.
+
+logLevel: info
+logDestinations: [stdout]
+
+# ---- Control API (Django's mediactl client talks to this) ----
+api: yes
+apiAddress: :9997
+
+# Allow the Django backend container to reach the control API. MediaMTX's
+# default only permits `api` from localhost; on the internal Docker network
+# the backend is a different host, so we grant the API/read/publish actions
+# to any internal client. (Ports are not published publicly except via nginx.)
+authInternalUsers:
+  - user: any
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+      - action: pprof
+
+# ---- Playback protocols served to the browser ----
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+hls: yes
+hlsAddress: :8888
+# MUST stay 'no': 'yes' keeps a permanent HLS reader attached to every path,
+# which prevents runOnDemandCloseAfter from ever firing — an H.265 camera would
+# then transcode 24/7 instead of only while someone is watching.
+hlsAlwaysRemux: no
+hlsVariant: lowLatency
+hlsAllowOrigin: '*'
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: '*'
+webrtcLocalUDPAddress: :8189
+# Inside Docker, MediaMTX would only advertise its container IP (172.x), which
+# remote browsers cannot reach. PUBLIC_HOST (compose → MTX_WEBRTCADDITIONALHOSTS)
+# adds the server's real LAN IP / public domain as an ICE candidate, so WebRTC
+# works for on-prem VMS and cloud VSaaS. Overridden by env; empty is fine for
+# localhost-only use (HLS still works everywhere as a fallback).
+webrtcAdditionalHosts: []
+# STUN lets a browser behind NAT discover its own public address (cloud mode).
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+
+# ---- Recording defaults (per-path overrides come from Django via the API) ----
+# Segments are written under /recordings/<camera-path>/ and indexed by Celery.
+record: no
+recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+recordFormat: fmp4
+recordSegmentDuration: 60s
+recordDeleteAfter: 0s
+
+# Paths are added dynamically by Django (apps/mediactl) when a camera is enabled.
+# A single fallback path allows publishing a local test source named "demo".
+paths:
+  all_others:
