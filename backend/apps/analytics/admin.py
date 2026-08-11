@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import AnalyticsRule, ObjectDetection, PlateRead, PlateWatchlist
+from .models import (
+    AnalyticsRule,
+    DetectorModel,
+    ObjectDetection,
+    PlateRead,
+    PlateWatchlist,
+)
 
 
 @admin.register(AnalyticsRule)
@@ -26,3 +32,11 @@ class ObjectDetectionAdmin(admin.ModelAdmin):
 class PlateWatchlistAdmin(admin.ModelAdmin):
     list_display = ("plate", "organization", "active", "reason")
     search_fields = ("plate",)
+
+
+@admin.register(DetectorModel)
+class DetectorModelAdmin(admin.ModelAdmin):
+    list_display = ("name", "task", "version", "framework", "device", "active", "created_at")
+    list_filter = ("task", "framework", "device", "active")
+    search_fields = ("name", "version")
+    list_editable = ("active",)

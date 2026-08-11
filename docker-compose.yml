@@ -78,17 +78,65 @@ services:
       - redis
 
   # Isolated AI/analytics worker — inference here can't starve the core queue.
+  # Built from Dockerfile.gpu so it carries the CV runtime (numpy + onnxruntime,
+  # CPU wheel by default): the beat-scheduled object_worker runs the active YOLO
+  # model per snapshot (~every 20s/rule), so real detections flow into the UI with
+  # low CPU. On a GPU host, rebuild this with --build-arg ORT_PACKAGE=onnxruntime-gpu
+  # (or run the continuous inference-worker under --profile gpu instead).
   celery-worker-ai:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.gpu
     command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "ai", "-n", "ai@%h"]
     env_file: .env
     restart: unless-stopped
     volumes:
       - ./backend:/app
       - recordings:/recordings
+      - ./models:/models:ro
     depends_on:
       - backend
       - redis
+
+  # Continuous AI inference worker (Phase AI-1) — OPT-IN, started only with
+  #   docker compose --profile gpu up -d --build
+  # on a host with an NVIDIA GPU + nvidia-container-toolkit installed. Built from
+  # Dockerfile.gpu (numpy + onnxruntime). It runs `manage.py run_inference`, which
+  # decodes each eligible camera's RTSP at a controlled FPS, motion-gates, runs the
+  # active object model, tracks, and ingests detections through the Phase-7
+  # pipeline. Kept in its own service so a model OOM/crash can never starve the VMS
+  # core — recording/playback keep working regardless.
+  #
+  # For real GPU execution, build the image with onnxruntime-gpu:
+  #   docker compose build --build-arg ORT_PACKAGE=onnxruntime-gpu inference-worker
+  # then register a CUDA model:  manage.py register_detector_model --device cuda …
+  # Drop model weights (*.onnx) into ./models (mounted read-only at /models).
+  inference-worker:
+    profiles: ["gpu"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.cuda
+    command: ["python", "manage.py", "run_inference"]
+    env_file: .env
+    restart: unless-stopped
+    # Cap host RAM so a runaway inference worker can never exhaust the WSL2/Docker
+    # VM and hang the daemon (learned the hard way on a 16 GB host). If it hits the
+    # cap it OOM-restarts in isolation; the VMS core keeps running.
+    mem_limit: 6g
+    volumes:
+      - ./backend:/app
+      - recordings:/recordings
+      - ./models:/models:ro
+    depends_on:
+      - backend
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
 
   celery-beat:
     build: ./backend

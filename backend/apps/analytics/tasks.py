@@ -39,10 +39,16 @@ def run_enabled_rules():
 
     from .models import AnalyticsRule
 
+    # When a continuous inference worker owns object detection + line-crossing,
+    # skip those here so detections/overlay aren't produced twice.
+    continuous = getattr(settings, "AI_CONTINUOUS", False)
+
     dispatched = 0
     for rule in AnalyticsRule.objects.filter(enabled=True, camera__enabled=True).select_related(
         "camera"
     ):
+        if continuous and rule.kind in ("object", "tripwire"):
+            continue
         if rule.kind == "motion":
             motion_worker.delay(
                 rule.camera_id,
@@ -239,11 +245,21 @@ def alpr_worker(rule_id):
     from apps.events.models import Event
     from apps.events.utils import broadcast_event
 
+    from .inference import registry, runner
     from .models import AnalyticsRule, PlateRead, PlateWatchlist
 
     rule = AnalyticsRule.objects.filter(id=rule_id, enabled=True).select_related("camera").first()
     if not rule:
         return 0
+
+    # Preferred path (Phase AI-2): a real, versioned plate model with Iranian
+    # normalization + watchlist, routed through the inference runner. Falls back
+    # to the legacy OpenALPR/demo detector below only when no model is active.
+    if registry.has_active_model("alpr"):
+        created = runner.run_alpr_detection(rule)
+        if created != runner.NO_MODEL:
+            return created
+
     camera = rule.camera
     image = ffmpeg.grab_snapshot(media_client.build_source_url(camera))
     if not image:
@@ -278,11 +294,21 @@ def object_worker(rule_id):
     from apps.events.models import Event
     from apps.events.utils import broadcast_event
 
+    from .inference import registry, runner
     from .models import AnalyticsRule, ObjectDetection
 
     rule = AnalyticsRule.objects.filter(id=rule_id, enabled=True).select_related("camera").first()
     if not rule:
         return 0
+
+    # Preferred path (Phase AI‑0): a real, versioned object model routed through
+    # the Phase‑7 controls (threshold/zone/dedup/audit/health). Falls back to the
+    # legacy OpenCV‑DNN / demo detector below only when no model is active.
+    if registry.has_active_model("object"):
+        created = runner.run_object_detection(rule)
+        if created != runner.NO_MODEL:
+            return created
+
     camera = rule.camera
     image = ffmpeg.grab_snapshot(media_client.build_source_url(camera))
     if not image:

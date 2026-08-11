@@ -82,6 +82,20 @@ export const endpoints = api.injectEndpoints({
     testConnection: build.mutation<ProbeResult, Record<string, unknown>>({
       query: (body) => ({ url: "/cameras/test-connection/", method: "POST", body }),
     }),
+    // Latest AI object detections for a camera (live-view overlay). `active` is
+    // true when an object-detection rule is enabled on the camera; `detections`
+    // are the boxes from the most recent frame (normalized 0..1).
+    cameraDetections: build.query<
+      {
+        active: boolean;
+        model: string;
+        age_seconds: number | null;
+        detections: { label: string; confidence: number; bbox: number[]; track_id?: string }[];
+      },
+      number
+    >({
+      query: (id) => `/analytics/cameras/${id}/detections`,
+    }),
     // ---- Manual recording control (Phase 2) ----
     startRecording: build.mutation<RecordingStatus, number>({
       query: (id) => ({ url: `/cameras/${id}/recording/start/`, method: "POST" }),
@@ -292,6 +306,7 @@ export const {
   useCameraBrandsQuery,
   useOnvifDiscoverMutation,
   useOnvifProbeMutation,
+  useCameraDetectionsQuery,
   useSchedulesQuery,
   useUpdateScheduleMutation,
   useRecordingsQuery,

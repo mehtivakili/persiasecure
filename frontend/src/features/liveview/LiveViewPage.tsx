@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import GridViewIcon from "@mui/icons-material/GridView";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
+import CenterFocusStrongIcon from "@mui/icons-material/CenterFocusStrong";
 import SlideshowIcon from "@mui/icons-material/Slideshow";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
@@ -58,6 +59,7 @@ export default function LiveViewPage() {
     sp.get("camera") ? Number(sp.get("camera")) : null
   );
   const [tour, setTour] = useState(false);
+  const [aiOverlay, setAiOverlay] = useState(true);
   const [offset, setOffset] = useState(0);
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -95,6 +97,17 @@ export default function LiveViewPage() {
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }} flexWrap="wrap">
         <Typography variant="h4">{t("liveview.title")}</Typography>
         <Box sx={{ flexGrow: 1 }} />
+        <Tooltip title="نمایش زندهٔ کادر اشیای شناسایی‌شده روی دوربین‌هایی که تشخیص شیء دارند">
+          <ToggleButton
+            size="small"
+            value="ai"
+            selected={aiOverlay}
+            onChange={() => setAiOverlay((v) => !v)}
+          >
+            <CenterFocusStrongIcon fontSize="small" sx={{ ml: 0.5 }} />
+            تشخیص زنده
+          </ToggleButton>
+        </Tooltip>
         <Tooltip title={t("liveview.tour")}>
           <ToggleButton
             size="small"
@@ -173,7 +186,12 @@ export default function LiveViewPage() {
                   overflow: "hidden",
                 }}
               >
-                <VideoPlayer playback={cam.playback} label={cam.name} />
+                <VideoPlayer
+                  playback={cam.playback}
+                  label={cam.name}
+                  cameraId={cam.id}
+                  showDetections={aiOverlay}
+                />
                 <Chip
                   size="small"
                   icon={<CameraStatusDot status={cam.status} />}

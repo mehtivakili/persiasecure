@@ -725,3 +725,313 @@ precise plan for the AI / image‑processing work.
   day one, and Iran‑specific realities (Persian plates need a tuned model; face
   recognition is legally sensitive and stays feature‑flagged/RBAC'd).
 
+## 2026‑08‑03 — Entry 16 · AI‑0 slice 1 — inference foundation (started building)
+
+### Asked
+"start it" — begin implementing the AI plan.
+
+### Roadmap for this slice
+Build the AI‑0 foundation that every model reuses, fully testable on CPU with a
+dummy model, routed through the existing Phase‑7 controls — no GPU/real weights
+required yet. Real continuous‑decode loop + a downloaded YOLO model come next.
+
+### Done
+- **Registry:** `DetectorModel` (`apps/analytics/models.py`, migration
+  `0003_detectormodel`) — versioned/auditable model rows (task, framework, path,
+  sha256, input size, class map, min_confidence/iou, device cpu|cuda, active,
+  metrics) + admin (`active` inline‑editable). `active_for(task)` helper.
+- **Inference runtime** `apps/analytics/inference/`:
+  - `base.py` — `Detector` ABC + `RawDetection` (camera/event‑agnostic).
+  - `geometry.py` — pure‑Python IoU / per‑class NMS / letterbox map (unit‑tested,
+    no numpy) shared by all backends.
+  - `dummy.py` — `DummyDetector` (deterministic, proves the seam end‑to‑end).
+  - `yolo.py` — `YoloOnnxDetector`: standard YOLOv8/v11 ONNX decode (letterbox →
+    argmax → unletterbox → NMS). numpy/onnxruntime are **optional imports**;
+    missing deps or weights ⇒ `available()==False` (never raises into the alarm
+    loop). CUDA provider when `device=cuda`.
+  - `registry.py` — resolves newest active `DetectorModel`→`Detector`, caches by
+    id+`updated_at` (reloads on change); `hardware_snapshot()` (os load avg +
+    `nvidia-smi`, best‑effort, never raises).
+  - `runner.py` — `run_object_detection(rule)`: frame → detector → `Detection` →
+    `ingest_detection` (Phase‑7 threshold/zone/dedup/audit/health). Returns
+    `NO_MODEL` sentinel so the caller can fall back. A detector crash is caught
+    and logged, never propagated.
+- **Wiring:** `object_worker` now prefers a real active model via the runner and
+  only falls back to the legacy OpenCV‑DNN/demo detector when none is active.
+- **Health API:** `detectors/health` now returns `{detectors, hardware,
+  active_models}` (GPU/CPU snapshot + which model is live on which device). No
+  frontend/test consumed the old flat shape, so safe.
+- **Deploy artifact:** opt‑in `inference-worker` compose service
+  (`--profile gpu`, nvidia device reservation, onnxruntime‑gpu) — inert by
+  default so the normal stack is unchanged; `models/` weights dir + README,
+  git‑ignored.
+
+### Verify
+- Throwaway `python:3.12-slim`: `makemigrations --check` = clean; full suite
+  **84/84 OK** (was 71 → +13 inference tests: geometry IoU/NMS/letterbox, registry
+  resolve+cache+reload, dummy end‑to‑end → Event, confidence‑threshold + class
+  filter suppression, YOLO graceful‑unavailable).
+- Design guarantee held: no numpy/onnxruntime added to `requirements.txt`, so the
+  core image stays light; the real backend’s heavy deps live only in the opt‑in
+  GPU service.
+
+### Next
+Continuous RTSP decode loop (fps + motion‑gate + batch), a baked `Dockerfile.gpu`,
+then download + register a real YOLO `.onnx` and validate on one live camera (AI‑1).
+
+## 2026‑08‑03 — Entry 17 · AI‑1 slice — continuous decode + tracking + GPU image
+
+### Asked
+"ادامه بده به بهترین روشی که خودت فک میکنی نیازه" — continue however is best.
+
+### Roadmap
+Upgrade from per‑snapshot sampling (one frame / 20 s) to a real‑time continuous
+decode loop with fps control + motion‑gating + object tracking, and make the GPU
+deployment path real — all with unit‑tested pure helpers so it verifies on CPU.
+
+### Done
+- **Runner refactor** (`inference/runner.py`): split into `infer_frame` (timed,
+  crash‑safe) + `process_detections` (class filter → `Detection` → `ingest_detection`)
+  shared by both the celery per‑snapshot path and the continuous loop.
+- **Motion gate** (`inference/gate.py`): Pillow luma frame‑diff on a 64×36
+  downsample; skips inference on static frames (the biggest multi‑camera GPU
+  saving). First frame passes; decode error fails open.
+- **IoU tracker** (`inference/tracker.py`): greedy IoU association → stable
+  `track_id` (ByteTrack‑style, no Kalman), age‑out. Stable ids make the Phase‑7
+  track‑based dedup real and unlock direction/dwell later.
+- **Frame source** (`inference/frames.py`): one ffmpeg per camera
+  (`image2pipe`/mjpeg) at controlled fps+scale; pure‑Python `extract_jpeg_frames`
+  SOI/EOI splitter (unit‑tested) + `RtspFrameSource` context manager.
+- **Continuous loop** (`inference/loop.py` + `manage.py run_inference`):
+  `plan()` picks eligible object rules (feature on + active model + enabled cams);
+  `CameraWorker` thread per camera (decode→gate→infer→track→ingest, reconnect
+  backoff); `InferenceService` orchestrates + SIGTERM‑clean. `--list` dry‑run.
+- **Model registration** (`manage.py register_detector_model`): register a
+  versioned model from a local weights path (computes sha256); `--activate`
+  enforces one active model per task (clean rollback). Renamed flag to
+  `--model-version` (Django reserves `--version` on every command — first test run
+  caught the argparse conflict).
+- **`backend/Dockerfile.gpu`**: base image + numpy + onnxruntime
+  (`--build-arg ORT_PACKAGE=onnxruntime-gpu` for CUDA); compose `inference-worker`
+  builds from it and runs `run_inference` (still `--profile gpu`, opt‑in).
+
+### Verify
+- Throwaway `python:3.12-slim`: `makemigrations --check` clean; full suite
+  **98/98 OK** (84 → +14: mjpeg splitter incl. partial‑frame remainder, motion
+  gate pass/skip/fail‑open, tracker id‑stability/distinct/age‑out, plan gating,
+  register‑command activate+rollback).
+- `docker compose config`: `inference-worker` present only under `--profile gpu`,
+  absent from the default stack (VMS unchanged).
+- **`docker compose --profile gpu build inference-worker` succeeds** — image
+  `persiansecure-inference-worker:latest` with numpy 2.2.6 + onnxruntime 1.28.0.
+  So the GPU deploy path is a verified artifact, not just a template.
+
+### Next (needs a GPU host + a weights file — operator action)
+Drop a YOLOv8 `.onnx` in `./models`, `register_detector_model --device cuda
+--activate`, `docker compose --profile gpu up -d`, then confirm live person/vehicle
+events on one camera. After that: cross‑camera batching, then AI‑2 (Iranian ALPR).
+
+## 2026‑08‑03 — Entry 18 · Three AI features in one pass — batching + line‑crossing + Iranian ALPR
+
+### Asked
+"همه رو انجام بده" — do all three offered next steps.
+
+### Done
+**1) Cross‑camera batching (AI‑1b).** `Detector.infer_batch` (default sequential)
++ a real batched YOLO tensor path (`_preprocess`/`_decode` split, `np.stack` →
+one `session.run`) + `inference/batching.py` (`group` chunker, thread‑safe
+`BatchCollector` FIFO). Gives one GPU forward pass over N cameras’ frames; the
+scheduler thread that drives it is a deployment‑tuning step.
+
+**2) Object‑based line‑crossing (AI‑5a).** `inference/crossing.py` — orientation +
+segment‑intersection geometry and a directional `LineCrossingDetector` fed by the
+tracker’s per‑track centroids. Wired into `CameraWorker` (`load_crossings` +
+`_check_crossings`): a tracked object whose path crosses a tripwire line raises one
+**directional** critical `tripwire` Event via `emit_tripwire`→`ingest_detection`
+(dedup by `track_id`). This replaces the pixel‑motion tripwire — the correct fix
+for “عبور از خط لابی ۳”: alarms on a *person crossing*, not on shadows/sunlight.
+Note: label convention — first test run had ab/ba inverted vs. the assertion; fixed
+the sign (`side_prev > 0 ⇒ "ab"`) and documented it.
+
+**3) Iranian ALPR pipeline (AI‑2).** `inference/plates.py` — Persian (۰‑۹) + Arabic
+(٠‑٩) digit folding, Latin→Persian letter aliases, `parse_iranian_plate` validating
+the civilian layout (2 digits + Persian letter + 3 digits + 2‑digit province) and a
+`canonical`/`pretty` form for reliable matching; `DummyPlateDetector` +
+graceful `YoloPlateOcrDetector`. `runner.run_alpr_detection` normalizes each read,
+matches the org **watchlist (hit ⇒ critical alarm)**, and writes a `PlateRead`
+linked to an audited Event, with plate‑level dedup. Registry now keys backends by
+`(task, framework)`; `alpr_worker` prefers the active plate model, legacy OpenALPR/
+demo as fallback. The real Iranian detect+OCR `.onnx` is the only remaining piece
+(operator‑trained on site data), slotting into `YoloPlateOcrDetector.infer`.
+
+### Verify
+- Throwaway `python:3.12-slim`: `makemigrations --check` clean; full suite
+  **115/115 OK** (98 → +17: crossing geometry/direction/filter + loop integration
+  raising a tripwire Event; plate digit‑fold/parse/normalize/invalid; ALPR runner
+  dummy end‑to‑end + watchlist‑critical; batching group/collector/sequential
+  `infer_batch`).
+- No new deps in `requirements.txt`; heavy libs remain only in the opt‑in GPU image.
+
+### Next
+Operator: train/deploy the real YOLO + Iranian‑plate ONNX models and validate live.
+Then AI‑3 (fire/smoke model), AI‑4 (gated face), AI‑6 (forensic search), AI‑7 (MLOps).
+
+## 2026‑08‑03 — Entry 19 · Real model placed — YOLO11m exported, registered, validated LIVE
+
+### Asked
+"یه مدل پیدا کن قرار بده بهترین مدل ممکن" — find and place the best possible model.
+
+### Done
+- **Exported YOLO11m** (Ultralytics 8.4, the current‑gen model) to ONNX via a
+  throwaway container: `yolo export model=yolo11m.pt format=onnx imgsz=640
+  dynamic=True` → `models/yolo11m.onnx` (77 MB, opset 20, dynamic batch axis) +
+  `yolo11m.pt` + a `sample.jpg` for verification. (~2 GB one‑off install of
+  torch/ultralytics; weights are git‑ignored.) Git Bash mangled `/models` on the
+  first run (exit 125) → fixed with `MSYS_NO_PATHCONV=1`.
+- **Validated against our own `YoloOnnxDetector`** (no Django needed — empty
+  `__init__` chain + getattr on a plain object): on `sample.jpg` it returned
+  **1 bus (0.94) + 4 persons (0.78–0.92)**; `infer_batch` returned `[5, 5]`,
+  proving the batched path + dynamic ONNX batch axis.
+- **Bug caught by the verification:** decoder bbox/confidence were numpy `float32`
+  scalars → **not JSON‑serializable**, would crash on `Event.details` save. Fixed
+  in `yolo._decode` (`float()`/`int()` coercion); re‑verified `json.dumps` works.
+- **Registered** `register_detector_model --name yolo11m --task object --path
+  /models/yolo11m.onnx --classes coco --input 640 --device cpu --activate` →
+  `DetectorModel #1`, active, sha256 recorded. First attempt failed:
+  `analytics_detectormodel` table missing → applied migration `0003` to the live
+  Postgres (`migrate analytics`), then registered. Registered on the live DB via
+  `docker compose run --rm` with a `./models` bind‑mount (backend service doesn't
+  normally mount it).
+- **Validated LIVE on the real cameras** (one snapshot each, our registry+detector,
+  device=cpu): آسانسور 0 (empty ✓); بیرون 2×motorbike; فروش 1×person +
+  chairs/keyboards/monitors/laptop/mouse (office ✓); لابی 3 1×sofa; **پارکینگ
+  2×car + 1×motorbike ✓**. Accurate on real footage, not just the sample.
+
+### Note on running it now
+device=cpu so it runs with the default onnxruntime image. On the current stack the
+model is *active* but `celery-worker-ai` has no onnxruntime, so `available()` is
+False and object detection safely falls back to legacy — no crash, no phantom
+alarms. Real inference runs when an onnxruntime‑equipped worker is up (the
+`--profile gpu` inference‑worker, or a CPU worker with onnxruntime). Full suite
+re‑checked after the float fix: **115/115 OK**.
+
+### Next
+Stand up an onnxruntime worker (GPU via `--profile gpu`, or a CPU inference worker)
+to run YOLO11m continuously on the live streams; then the Iranian‑plate model (AI‑2)
+and AI‑3 fire/smoke.
+
+## 2026‑08‑05 — Entry 20 · Object detection LIVE in the environment (CPU, auto)
+
+### Asked
+"اون پیاده سازی ابجکت رو چجوری چک کنم توی محیط که چجوری کار میکنه؟" — how do I check
+the object implementation running in the environment?
+
+### Done
+- **Made `celery-worker-ai` carry the CV runtime**: switched its build to
+  `Dockerfile.gpu` (numpy + onnxruntime, CPU wheel) and mounted `./models:/models:ro`.
+  Now the existing beat task `run-analytics-rules` (every 20s) dispatches
+  `object_worker`, which — since `registry.get_detector("object").available()` is
+  now True — runs **YOLO11m per snapshot** through the Phase‑7 pipeline. Low CPU
+  (one frame / 20s / rule), still isolated on the `ai` queue.
+- Added object `AnalyticsRule`s on پارکینگ + بیرون (+ existing فروش), filtered to
+  security classes (person/car/truck/bus/motorbike/bicycle), `min_confidence=0.4`.
+- **Verified live**: object events auto‑grew 5 → 10 → 16 with no manual action;
+  real detections e.g. پارکینگ car 0.94 / motorbike 0.82, بیرون motorbike, فروش
+  person — all `model_name=yolo11m`, visible in the Events UI. (Held at 16 across a
+  cycle = the 30s per‑label dedup working, not a stall.)
+
+### How the operator checks it
+UI → `http://192.168.70.42:8080` → Events (new object events ~every 20s); or
+`docker compose exec backend python manage.py shell -c "from apps.events.models import Event; print(Event.objects.filter(type='object').count())"`; or
+`docker compose logs -f celery-worker-ai`.
+
+### Note
+Also fixed LAN access earlier this session (Entry‑less ops fix): added the server
+LAN IP `192.168.70.42` to `DJANGO_ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` and set
+`PUBLIC_HOST` (login was 400 DisallowedHost over the LAN; WebRTC live view now
+advertises the LAN IP). Continuous multi‑fps + tracking + object line‑crossing
+still runs via the `--profile gpu` inference‑worker.
+
+## 2026‑08‑05 — Entry 21 · Live detection overlay on video + per‑detection logging
+
+### Asked
+Draw the detected objects on the live image of a camera when object detection is
+enabled on it, and write to the log what each detection found.
+
+### Done
+- **Per‑detection logging** (`runner._log_detections`): every run writes one line
+  naming exactly what was found, e.g.
+  `AI detection — cam 20 «پارکینگ» (yolo11m): 6 object(s) [5×car، 1×motorbike]`.
+  Verified live in `celery-worker-ai` logs.
+- **Overlay publish** (`inference/overlay.py`): `process_detections` publishes the
+  class‑filtered boxes of the latest frame to a short‑TTL cache per camera
+  (ephemeral "what's on screen", not an audit record — Events remain the record).
+  Centralized in `process_detections`, so both the per‑snapshot celery path and the
+  continuous GPU loop feed it.
+- **Endpoint** `GET /api/analytics/cameras/<id>/detections` →
+  `{active, model, age_seconds, detections:[{label,confidence,bbox,track_id}]}`.
+  `active` = an enabled object rule exists on the camera. Org‑scoped, analytics.view.
+- **Frontend overlay** (`VideoPlayer` + `LiveViewPage`): a `<canvas>` over the
+  video polls the endpoint (~1.2s) and draws normalized boxes mapped through
+  `objectFit: contain` letterboxing, colored by class (person=green, vehicles=amber),
+  with `label conf%` and an `AI • N` badge. Gated by a toolbar toggle «تشخیص زنده»
+  (default on) and only drawn when the camera reports `active`.
+
+### Verify
+- Backend suite **117/117 OK** (+2: overlay publish/log + endpoint active/boxes);
+  `makemigrations --check` clean; frontend `tsc`+build clean.
+- Deployed (restart backend + celery‑worker‑ai for the mounted code; rebuilt
+  frontend image). Confirmed live: log lines emitted and overlay cache populated
+  (پارکینگ 6 boxes incl. 5×car, بیرون 2×motorbike, فروش 2×person).
+
+### Note on cadence
+Boxes refresh at the detection rate — ~every 20s on the CPU per‑snapshot path
+(`run-analytics-rules`). For smooth near‑real‑time boxes + tracking, run the
+continuous `--profile gpu` inference‑worker (multi‑fps).
+
+## 2026‑08‑05 — Entry 22 · GPU real‑time inference on the RTX 3060 (the smooth path)
+
+### Asked
+"خیلی کنده … با جی پی یو روون‌تر" — CPU cadence is too slow; make it smooth on GPU.
+
+### Hardware
+Host has an **NVIDIA RTX 3060 (12 GB)**, driver 591.86. Docker Desktop/WSL2 GPU
+passthrough works (`--gpus all` → nvidia‑smi sees the card).
+
+### What it took (three real problems, all fixed)
+1. **CUDA version mismatch.** `Dockerfile.cuda` (base `cuda:12.6.2-cudnn-runtime`)
+   with `onnxruntime-gpu==1.28.0` fell back to CPU: 1.28 needs **CUDA 13**
+   (`libcublasLt.so.13: cannot open`). Empirically tested versions against the
+   base with a real GPU session → **`onnxruntime-gpu==1.22.0` is the CUDA‑12 build**
+   and its session actually uses `CUDAExecutionProvider`. Pinned it; added a
+   build‑time assertion that fails the build if a CPU‑only package slips in.
+2. **A CPU‑vs‑GPU packaging trap.** The first CUDA builds shipped the CPU
+   `onnxruntime` (not `‑gpu`); `nvidia-smi` inside the container was misleading
+   (the toolkit injects it regardless of the image). Fixed by the explicit pin +
+   assertion, and resilient apt (`Acquire::Retries=10`) for a flaky Ubuntu mirror.
+3. **Memory hang.** While CUDA was silently on CPU, running YOLO11m on **5**
+   streams saturated the ~8 GB WSL2 VM (host 16 GB, free 1.4 GB) → Docker daemon
+   unresponsive. Fixes: `mem_limit: 6g` on the worker (OOM‑restart in isolation,
+   never hang the daemon) + trimmed the GPU load to **2 cameras** (پارکینگ for
+   detection, لابی 3 for line‑crossing) at fps=4. With CUDA actually on the GPU,
+   host CPU/RAM load is low again.
+
+### Result (verified live)
+- Model on GPU: **2.6 GB VRAM**, GPU util **5–7 %** (RTX 3060 barely working — huge
+  headroom). Worker RAM 1.8 / 6 GB. Daemon responsive.
+- Detections streaming multiple times/sec: `AI detection — cam 20 «پارکینگ»
+  (yolo11m): 4 object(s) [3×car، 1×motorbike]`. Overlay cache refreshed at fps=4;
+  frontend overlay poll lowered 1200→**500 ms** → boxes update ~2×/sec (smooth vs
+  the 20 s CPU cadence).
+- `AI_CONTINUOUS=1` hands object+tripwire to the GPU worker; the celery per‑snapshot
+  path skips them (no duplicate events/overlay).
+- Fixed GPU‑worker logging: `run_inference` now routes `apps.analytics` INFO to
+  stdout (the per‑detection lines the operator asked for) — the celery worker got
+  these free via celery's logging, the management command did not.
+
+### Config knobs / scaling
+The bottleneck is **host RAM**, not the GPU. To add the other 3 cameras or raise
+fps: give WSL2 more memory (`%UserProfile%\.wslconfig` → `[wsl2] memory=12GB`,
+`wsl --shutdown`) or close host apps, then re‑enable object rules on the other
+cameras. The GPU has capacity for all 5 at higher fps.
+

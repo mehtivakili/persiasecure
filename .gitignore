@@ -48,3 +48,13 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# AI model weights (Phase AI-0) — large binaries, not versioned
+models/*
+!models/README.md
+
+# Native dev artifacts (docs/dev-native.md)
+backend/db.sqlite3
+backend/dev_media/
+backend/dev_recordings/
+backend/.venv/

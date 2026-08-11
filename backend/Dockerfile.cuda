@@ -1,0 +1,41 @@
+# True GPU inference image (RTX/CUDA) for the continuous inference worker.
+#
+# Based on NVIDIA's CUDA 12.6 + cuDNN 9 runtime (Ubuntu 24.04 → Python 3.12), which
+# provides the CUDA/cuDNN userspace libs onnxruntime-gpu needs. Run the container
+# with the NVIDIA runtime (nvidia-container-toolkit / `--gpus all`); the host only
+# needs a recent NVIDIA driver. Kept separate from the VMS core so heavy GPU deps
+# never touch the recording/playback path.
+FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu24.04
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH=/opt/venv/bin:$PATH \
+    PIP_DEFAULT_TIMEOUT=1200 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get -o Acquire::Retries=10 update \
+    && apt-get -o Acquire::Retries=10 install -y --no-install-recommends \
+        python3 python3-venv python3-pip \
+        ffmpeg curl libpq5 libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Isolated venv (Ubuntu 24.04 marks the system Python externally-managed).
+RUN python3 -m venv /opt/venv
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --retries 10 -r requirements.txt
+RUN pip install --retries 10 "numpy>=1.26,<2.3"
+
+# GPU build of onnxruntime. Pinned to 1.22.x: the CUDA-12 build (matches this
+# image's CUDA 12.6 + cuDNN 9 base). onnxruntime-gpu 1.28 needs CUDA 13 and fails
+# to load libcublasLt.so.13 here. The assertion FAILS the build if a CPU-only
+# package slips in, so the worker is guaranteed to have the CUDA provider.
+RUN pip install --retries 10 "onnxruntime-gpu==1.22.0"
+RUN python -c "import onnxruntime as o; p=o.get_available_providers(); print('providers:', p); assert 'CUDAExecutionProvider' in p, 'CPU-only onnxruntime installed: %s' % p"
+
+COPY . .
+
+# Continuous GPU inference (object detection + tracking + line-crossing + overlay).
+CMD ["python", "manage.py", "run_inference"]

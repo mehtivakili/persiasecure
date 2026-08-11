@@ -4,11 +4,23 @@ import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 import Hls from "hls.js";
 
 import type { PlaybackUrls } from "../api/types";
+import { useCameraDetectionsQuery } from "../api/endpoints";
 
 interface Props {
   playback: PlaybackUrls;
   muted?: boolean;
   label?: string;
+  // When set, poll the camera's live AI detections and draw bounding boxes.
+  cameraId?: number;
+  showDetections?: boolean;
+}
+
+const VEHICLE_LABELS = new Set(["car", "truck", "bus", "motorbike", "bicycle"]);
+
+function boxColor(label: string) {
+  if (label === "person") return "#2ee6a6"; // green
+  if (VEHICLE_LABELS.has(label)) return "#ffb02e"; // amber
+  return "#ffd93b"; // yellow
 }
 
 type State = "connecting" | "playing" | "error";
@@ -24,9 +36,73 @@ const RETRY_DELAY_MS = 2500;
  * HLS (hls.js / native), and auto-retries with backoff until the on-demand
  * source comes online.
  */
-export default function VideoPlayer({ playback, muted = true, label }: Props) {
+export default function VideoPlayer({
+  playback,
+  muted = true,
+  label,
+  cameraId,
+  showDetections = false,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<State>("connecting");
+
+  // Live AI overlay: poll the latest detections for this camera and draw them.
+  const overlayOn = Boolean(showDetections && cameraId);
+  const { data: det } = useCameraDetectionsQuery(cameraId as number, {
+    skip: !overlayOn,
+    pollingInterval: 500, // ~2 refreshes/sec — smooth with the GPU multi-fps loop
+  });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+
+    const draw = () => {
+      const cw = canvas.clientWidth;
+      const ch = canvas.clientHeight;
+      if (canvas.width !== cw) canvas.width = cw;
+      if (canvas.height !== ch) canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, cw, ch);
+      if (!overlayOn || !det?.active) return;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh) return;
+      // Map normalized boxes onto the video's displayed rect (objectFit: contain).
+      const scale = Math.min(cw / vw, ch / vh);
+      const dw = vw * scale;
+      const dh = vh * scale;
+      const ox = (cw - dw) / 2;
+      const oy = (ch - dh) / 2;
+      ctx.lineWidth = 2;
+      ctx.font = "600 12px sans-serif";
+      for (const d of det.detections || []) {
+        if (!d.bbox || d.bbox.length < 4) continue;
+        const [x, y, w, h] = d.bbox;
+        const rx = ox + x * dw;
+        const ry = oy + y * dh;
+        const rw = w * dw;
+        const rh = h * dh;
+        const color = boxColor(d.label);
+        ctx.strokeStyle = color;
+        ctx.strokeRect(rx, ry, rw, rh);
+        const text = `${d.label} ${Math.round(d.confidence * 100)}%`;
+        const tw = ctx.measureText(text).width + 8;
+        ctx.fillStyle = color;
+        ctx.fillRect(rx, Math.max(0, ry - 16), tw, 16);
+        ctx.fillStyle = "#00120c";
+        ctx.fillText(text, rx + 4, Math.max(11, ry - 4));
+      }
+    };
+
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [det, overlayOn]);
   // Bumping `attempt` re-runs the connect effect; the ref caps total tries.
   const [attempt, setAttempt] = useState(0);
   const attemptRef = useRef(0);
@@ -142,6 +218,41 @@ export default function VideoPlayer({ playback, muted = true, label }: Props) {
         playsInline
         style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
       />
+      {overlayOn && (
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {overlayOn && det?.active && (
+        <Box
+          sx={{
+            position: "absolute",
+            bottom: 6,
+            insetInlineStart: 6,
+            px: 0.9,
+            py: 0.25,
+            borderRadius: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            color: "#7ef2c8",
+            bgcolor: "rgba(46,230,166,0.16)",
+            border: "1px solid rgba(46,230,166,0.55)",
+          }}
+        >
+          AI{det.detections?.length ? ` • ${det.detections.length}` : ""}
+        </Box>
+      )}
       {state !== "playing" && (
         <Box
           sx={{

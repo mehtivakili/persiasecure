@@ -12,5 +12,10 @@ router.register("plate-watchlist", views.PlateWatchlistViewSet, basename="platew
 urlpatterns = [
     path("analytics/heatmap", views.motion_heatmap, name="motion-heatmap"),
     path("analytics/detectors/health", views.detector_health, name="detector-health"),
+    path(
+        "analytics/cameras/<int:camera_id>/detections",
+        views.camera_detections,
+        name="camera-detections",
+    ),
     path("", include(router.urls)),
 ]

@@ -53,6 +53,12 @@ FEATURE_FLAGS = {
 # detectors while keeping random demo fixtures disabled.
 ENABLE_DEMO_ANALYTICS = env_bool("ENABLE_DEMO_ANALYTICS", False)
 
+# When the dedicated (GPU) continuous inference worker is running, it is the
+# object-detection + line-crossing engine. Setting this hands those kinds over to
+# it: the beat-scheduled per-snapshot path skips `object`/`tripwire` so events and
+# the live overlay aren't produced twice.
+AI_CONTINUOUS = env_bool("AI_CONTINUOUS", False)
+
 # Key used to encrypt camera credentials at rest (apps.cameras.crypto).
 # Prefer a real Fernet key in production (Fernet.generate_key()); when empty a
 # key is derived from SECRET_KEY so development needs no extra config. Keep it

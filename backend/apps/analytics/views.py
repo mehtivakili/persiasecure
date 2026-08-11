@@ -22,12 +22,72 @@ def _org(request, qs):
 @api_view(["GET"])
 @permission_classes([HasVmsPermission])
 def detector_health(request):
-    """Per-detector run count, average latency and last-seen (Phase 7 monitoring)."""
+    """
+    Per-detector run count, average latency and last-seen (Phase 7 monitoring),
+    plus a best-effort GPU/CPU hardware snapshot and the active model registry
+    (Phase AI-0). Lets an operator see, at a glance, which model is live on which
+    device and whether the inference host is keeping up.
+    """
     if not request.user.has_vms_perm("analytics.view"):
         return Response({"detail": "عدم دسترسی."}, status=403)
+    from .inference import registry
+    from .models import DetectorModel
     from .pipeline import detector_health as _health
 
-    return Response(_health())
+    active = [
+        {
+            "task": m.task,
+            "name": m.name,
+            "version": m.version,
+            "framework": m.framework,
+            "device": m.device,
+        }
+        for m in DetectorModel.objects.filter(active=True)
+    ]
+    return Response({
+        "detectors": _health(),
+        "hardware": registry.hardware_snapshot(),
+        "active_models": active,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([HasVmsPermission])
+def camera_detections(request, camera_id):
+    """
+    Latest object detections for one camera, for the live-view overlay:
+      { active, model, age_seconds, detections:[{label,confidence,bbox,track_id}] }
+    `active` = an enabled object rule exists on the camera; `detections` are the
+    boxes from the most recent frame the detector ran (normalized 0..1).
+    """
+    if not request.user.has_vms_perm("analytics.view"):
+        return Response({"detail": "عدم دسترسی."}, status=403)
+    from apps.cameras.models import Camera
+
+    from .inference import overlay
+
+    cams = Camera.objects.filter(id=camera_id)
+    if not request.user.is_superuser:
+        cams = cams.filter(organization=request.user.organization)
+    camera = cams.first()
+    if camera is None:
+        return Response({"detail": "دوربین یافت نشد."}, status=404)
+
+    active = AnalyticsRule.objects.filter(camera=camera, kind="object", enabled=True).exists()
+    data = overlay.latest(camera_id)
+    age = None
+    detections = []
+    model = ""
+    if data:
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone as _tz
+
+        ts = parse_datetime(data.get("ts", ""))
+        if ts:
+            age = round((_tz.now() - ts).total_seconds(), 1)
+        detections = data.get("detections", [])
+        model = data.get("model", "")
+    return Response({"active": active, "model": model, "age_seconds": age, "detections": detections})
 
 
 class AnalyticsRuleViewSet(viewsets.ModelViewSet):
